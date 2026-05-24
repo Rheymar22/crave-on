@@ -23,91 +23,100 @@ class OrderController extends Controller
     |------------------------------------------------------------------
     */
     public function store(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'items'                  => ['required', 'array', 'min:1'],
-            'items.*.product_id'     => ['required', 'integer', 'exists:products,id'],
-            'items.*.quantity'       => ['required', 'integer', 'min:1', 'max:20'],
-            'order_type'             => ['required', 'in:pickup,delivery'],
-            'delivery_address'       => ['required_if:order_type,delivery', 'nullable', 'string'],
-            'notes'                  => ['nullable', 'string', 'max:500'],
-            'payment_method'         => ['required', 'string', 'in:cash,card,gcash,maya'],
-        ]);
+{
+    $validated = $request->validate([
+        'items'                  => ['required', 'array', 'min:1'],
+        'items.*.product_id'     => ['required', 'integer', 'exists:products,id'],
+        'items.*.quantity'       => ['required', 'integer', 'min:1', 'max:20'],
+        'order_type'             => ['required', 'in:pickup,delivery'],
+        'delivery_address'       => ['required_if:order_type,delivery', 'nullable', 'string'],
+        'notes'                  => ['nullable', 'string', 'max:500'],
+        'payment_method'         => ['required', 'string', 'in:cash,card,gcash,maya'],
+    ]);
 
-        try {
-            $order = DB::transaction(function () use ($validated, $request) {
-                $subtotal  = 0;
-                $lineItems = [];
+    try {
+        $order = DB::transaction(function () use ($validated, $request) {
+            $subtotal  = 0;
+            $lineItems = [];
 
-                foreach ($validated['items'] as $item) {
-                    $product = Product::findOrFail($item['product_id']);
+            foreach ($validated['items'] as $item) {
+                $product = Product::findOrFail($item['product_id']);
 
-                    if (! $product->is_available) {
-                        throw new \Exception(
-                            "Sorry, '{$product->name}' is currently unavailable."
-                        );
-                    }
-
-                    $lineTotal  = $product->price * $item['quantity'];
-                    $subtotal  += $lineTotal;
-
-                    $lineItems[] = [
-                        'product_id'    => $product->id,
-                        'product_name'  => $product->name,
-                        'price_at_time' => $product->price,
-                        'quantity'      => $item['quantity'],
-                        'subtotal'      => $lineTotal,
-                    ];
+                if (! $product->is_available) {
+                    throw new \Exception(
+                        "Sorry, '{$product->name}' is currently unavailable."
+                    );
                 }
 
-                $tax   = round($subtotal * 0.12, 2);
-                $total = round($subtotal + $tax, 2);
+                $lineTotal  = $product->price * $item['quantity'];
+                $subtotal  += $lineTotal;
 
-                $order = Order::create([
-                    'user_id'          => $request->user()->id,
-                    'subtotal'         => $subtotal,
-                    'tax'              => $tax,
-                    'total_amount'     => $total,
-                    'order_type'       => $validated['order_type'],
-                    'delivery_address' => $validated['delivery_address'] ?? null,
-                    'notes'            => $validated['notes'] ?? null,
-                    'payment_method'   => $validated['payment_method'],
-                    'payment_status'   => 'paid',
-                    'paid_at'          => now(),
-                    'status'           => 'pending',
-                ]);
+                $lineItems[] = [
+                    'product_id'    => $product->id,
+                    'product_name'  => $product->name,
+                    'price_at_time' => $product->price,
+                    'quantity'      => $item['quantity'],
+                    'subtotal'      => $lineTotal,
+                ];
+            }
 
-                $order->items()->createMany($lineItems);
-                return $order;
-            });
+            $tax   = round($subtotal * 0.12, 2);
+            $total = round($subtotal + $tax, 2);
 
-            $order->load('items', 'user');
-
-            // 🔔 Fire webhook event
-            $this->webhooks->dispatch('order.created', [
-                'order_number'   => $order->order_number,
-                'customer'       => $order->user->name,
-                'customer_email' => $order->user->email,
-                'total_amount'   => $order->total_amount,
-                'order_type'     => $order->order_type,
-                'status'         => $order->status,
-                'items_count'    => $order->items->count(),
-                'created_at'     => $order->created_at->toIso8601String(),
+            $order = Order::create([
+                'user_id'          => $request->user()->id,
+                'subtotal'         => $subtotal,
+                'tax'              => $tax,
+                'total_amount'     => $total,
+                'order_type'       => $validated['order_type'],
+                'delivery_address' => $validated['delivery_address'] ?? null,
+                'notes'            => $validated['notes'] ?? null,
+                'payment_method'   => $validated['payment_method'],
+                'payment_status'   => 'paid',
+                'paid_at'          => now(),
+                'status'           => 'pending',
             ]);
 
-            return response()->json([
-                'success' => true,
-                'message' => "Order {$order->order_number} placed successfully!",
-                'data'    => new OrderResource($order),
-            ], 201);
+            $order->items()->createMany($lineItems);
+            return $order;
+        });
 
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 422);
-        }
+        $order->load('items', 'user');
+
+        // 🔔 Fire webhook event
+        $this->webhooks->dispatch('order.created', [
+            'order_number'   => $order->order_number,
+            'customer'       => $order->user->name,
+            'customer_email' => $order->user->email,
+            'total_amount'   => $order->total_amount,
+            'order_type'     => $order->order_type,
+            'status'         => $order->status,
+            'items_count'    => $order->items->count(),
+            'created_at'     => $order->created_at->toIso8601String(),
+        ]);
+
+        // ── Forward to n8n ──
+        \Illuminate\Support\Facades\Http::post('http://localhost:5678/webhook/order', [
+            'order_id'       => $order->id,
+            'customer_name'  => $order->user->name,
+            'customer_email' => $order->user->email,
+            'total_amount'   => $order->total_amount,
+            'items'          => $order->items,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Order {$order->order_number} placed successfully!",
+            'data'    => new OrderResource($order),
+        ], 201);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage(),
+        ], 422);
     }
+}
 
     /*
     |------------------------------------------------------------------
