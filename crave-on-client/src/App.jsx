@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { useEffect } from 'react';                    // ← add this
 import { useAuthStore } from '@/store/authStore';     // ← add this
+import WebhooksPage from '@/pages/admin/WebhooksPage';
 
 import { CustomerLayout }  from '@/components/layout/CustomerLayout';
 import { AdminLayout }     from '@/components/layout/AdminLayout';
@@ -88,6 +89,7 @@ export default function App() {
           <Route path="categories" element={<CategoriesPage />} />
           <Route path="orders"     element={<AdminOrdersPage />} />
           <Route path="analytics"  element={<AnalyticsPage />} />
+          <Route path="webhooks"   element={<WebhooksPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

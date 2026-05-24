@@ -264,7 +264,6 @@ export default function CheckoutPage() {
                   value={form.notes}
                   onChange={handleChange}
                   rows={3}
-                  placeholder="e.g. Less ice, extra shot, no sugar..."
                   className="w-full px-3 py-2.5 rounded-lg border border-gray-300
                              text-sm focus:outline-none focus:ring-2
                              focus:ring-brand-500 focus:border-transparent

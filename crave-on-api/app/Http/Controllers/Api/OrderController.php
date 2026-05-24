@@ -6,16 +6,20 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\OrderResource;
 use App\Models\Order;
 use App\Models\Product;
+use App\Services\WebhookService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class OrderController extends Controller
 {
+    public function __construct(
+        protected WebhookService $webhooks
+    ) {}
+
     /*
     |------------------------------------------------------------------
     | POST /api/orders  (Customer)
-    | Place a new order — wrapped in DB transaction
     |------------------------------------------------------------------
     */
     public function store(Request $request): JsonResponse
@@ -32,14 +36,12 @@ class OrderController extends Controller
 
         try {
             $order = DB::transaction(function () use ($validated, $request) {
-
                 $subtotal  = 0;
                 $lineItems = [];
 
                 foreach ($validated['items'] as $item) {
                     $product = Product::findOrFail($item['product_id']);
 
-                    // Check availability before accepting order
                     if (! $product->is_available) {
                         throw new \Exception(
                             "Sorry, '{$product->name}' is currently unavailable."
@@ -51,18 +53,16 @@ class OrderController extends Controller
 
                     $lineItems[] = [
                         'product_id'    => $product->id,
-                        'product_name'  => $product->name,      // price snapshot
-                        'price_at_time' => $product->price,     // price snapshot
+                        'product_name'  => $product->name,
+                        'price_at_time' => $product->price,
                         'quantity'      => $item['quantity'],
                         'subtotal'      => $lineTotal,
                     ];
                 }
 
-                // 12% VAT
                 $tax   = round($subtotal * 0.12, 2);
                 $total = round($subtotal + $tax, 2);
 
-                // Create the order record
                 $order = Order::create([
                     'user_id'          => $request->user()->id,
                     'subtotal'         => $subtotal,
@@ -72,18 +72,28 @@ class OrderController extends Controller
                     'delivery_address' => $validated['delivery_address'] ?? null,
                     'notes'            => $validated['notes'] ?? null,
                     'payment_method'   => $validated['payment_method'],
-                    'payment_status'   => 'paid',   // mock instant payment
+                    'payment_status'   => 'paid',
                     'paid_at'          => now(),
                     'status'           => 'pending',
                 ]);
 
-                // Create all line items at once
                 $order->items()->createMany($lineItems);
-
                 return $order;
             });
 
-            $order->load('items');
+            $order->load('items', 'user');
+
+            // 🔔 Fire webhook event
+            $this->webhooks->dispatch('order.created', [
+                'order_number'   => $order->order_number,
+                'customer'       => $order->user->name,
+                'customer_email' => $order->user->email,
+                'total_amount'   => $order->total_amount,
+                'order_type'     => $order->order_type,
+                'status'         => $order->status,
+                'items_count'    => $order->items->count(),
+                'created_at'     => $order->created_at->toIso8601String(),
+            ]);
 
             return response()->json([
                 'success' => true,
@@ -102,7 +112,6 @@ class OrderController extends Controller
     /*
     |------------------------------------------------------------------
     | GET /api/orders  (Customer)
-    | Customer's own order history — newest first
     |------------------------------------------------------------------
     */
     public function index(Request $request): JsonResponse
@@ -127,13 +136,12 @@ class OrderController extends Controller
     /*
     |------------------------------------------------------------------
     | GET /api/orders/{order}  (Customer + Admin)
-    | Single order detail
     |------------------------------------------------------------------
     */
     public function show(Request $request, Order $order): JsonResponse
     {
-        // Customers can only view their own orders
-        if ($request->user()->isCustomer() && $order->user_id !== $request->user()->id) {
+        if ($request->user()->isCustomer() &&
+            $order->user_id !== $request->user()->id) {
             return response()->json([
                 'success' => false,
                 'message' => 'Order not found.',
@@ -151,12 +159,10 @@ class OrderController extends Controller
     /*
     |------------------------------------------------------------------
     | POST /api/orders/{order}/cancel  (Customer)
-    | Cancel only if still in pending or confirmed state
     |------------------------------------------------------------------
     */
     public function cancel(Request $request, Order $order): JsonResponse
     {
-        // Only owner can cancel
         if ($order->user_id !== $request->user()->id) {
             return response()->json([
                 'success' => false,
@@ -173,6 +179,14 @@ class OrderController extends Controller
 
         $order->update(['status' => 'cancelled']);
 
+        // 🔔 Fire webhook event
+        $this->webhooks->dispatch('order.cancelled', [
+            'order_number' => $order->order_number,
+            'customer'     => $order->user->name,
+            'total_amount' => $order->total_amount,
+            'cancelled_at' => now()->toIso8601String(),
+        ]);
+
         return response()->json([
             'success' => true,
             'message' => "Order {$order->order_number} has been cancelled.",
@@ -183,8 +197,6 @@ class OrderController extends Controller
     /*
     |------------------------------------------------------------------
     | GET /api/admin/orders  (Admin)
-    | All orders with optional status filter
-    | Supports: ?status=pending  ?search=ORD-  ?per_page=15
     |------------------------------------------------------------------
     */
     public function adminIndex(Request $request): JsonResponse
@@ -200,7 +212,7 @@ class OrderController extends Controller
             $query->where('order_number', 'like', '%' . $request->search . '%');
         }
 
-        $orders = $query->paginate($request->get('per_page', 15));
+        $orders = $query->paginate($request->input('per_page', 15));
 
         return response()->json([
             'success' => true,
@@ -217,7 +229,6 @@ class OrderController extends Controller
     /*
     |------------------------------------------------------------------
     | PATCH /api/admin/orders/{order}/status  (Admin)
-    | Move order through the lifecycle
     |------------------------------------------------------------------
     */
     public function updateStatus(Request $request, Order $order): JsonResponse
@@ -231,11 +242,25 @@ class OrderController extends Controller
 
         $previousStatus = $order->status;
         $order->update(['status' => $validated['status']]);
+        $order->load('user');
+
+        // 🔔 Fire webhook event
+        $this->webhooks->dispatch('order.status_updated', [
+            'order_number'    => $order->order_number,
+            'customer'        => $order->user->name,
+            'customer_email'  => $order->user->email,
+            'previous_status' => $previousStatus,
+            'new_status'      => $validated['status'],
+            'total_amount'    => $order->total_amount,
+            'updated_at'      => now()->toIso8601String(),
+        ]);
 
         return response()->json([
             'success' => true,
             'message' => "Order {$order->order_number} moved from '{$previousStatus}' to '{$validated['status']}'.",
-            'data'    => new OrderResource($order->fresh()->load('items', 'user')),
+            'data'    => new OrderResource(
+                $order->fresh()->load('items', 'user')
+            ),
         ]);
     }
 }

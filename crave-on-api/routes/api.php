@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\WebhookController; // ← add this import
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -41,10 +42,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Customer order management
     Route::prefix('orders')->group(function () {
-        Route::get('/',                   [OrderController::class, 'index']);
-        Route::post('/',                  [OrderController::class, 'store']);
-        Route::get('/{order}',            [OrderController::class, 'show']);
-        Route::post('/{order}/cancel',    [OrderController::class, 'cancel']);
+        Route::get('/',                [OrderController::class, 'index']);
+        Route::post('/',               [OrderController::class, 'store']);
+        Route::get('/{order}',         [OrderController::class, 'show']);
+        Route::post('/{order}/cancel', [OrderController::class, 'cancel']);
     });
 
     /*
@@ -59,26 +60,35 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Category management
         Route::prefix('categories')->group(function () {
-            Route::post('/',              [CategoryController::class, 'store']);
-            Route::put('/{category}',     [CategoryController::class, 'update']);
-            Route::delete('/{category}',  [CategoryController::class, 'destroy']);
+            Route::post('/',             [CategoryController::class, 'store']);
+            Route::put('/{category}',    [CategoryController::class, 'update']);
+            Route::delete('/{category}', [CategoryController::class, 'destroy']);
         });
 
         // Product management
         Route::prefix('products')->group(function () {
-            Route::get('/',                        [ProductController::class, 'adminIndex']);
-            Route::post('/',                       [ProductController::class, 'store']);
-            Route::post('/upload-image',       [ProductController::class, 'uploadImage']);
-            Route::put('/{product}',               [ProductController::class, 'update']);
-            Route::delete('/{product}',            [ProductController::class, 'destroy']);
-            Route::patch('/{product}/toggle',      [ProductController::class, 'toggleAvailability']);
+            Route::get('/',                   [ProductController::class, 'adminIndex']);
+            Route::post('/',                  [ProductController::class, 'store']);
+            Route::post('/upload-image',      [ProductController::class, 'uploadImage']);
+            Route::put('/{product}',          [ProductController::class, 'update']);
+            Route::delete('/{product}',       [ProductController::class, 'destroy']);
+            Route::patch('/{product}/toggle', [ProductController::class, 'toggleAvailability']);
         });
 
         // Order management
         Route::prefix('orders')->group(function () {
-            Route::get('/',                        [OrderController::class, 'adminIndex']);
-            Route::get('/{order}',                 [OrderController::class, 'show']);
-            Route::patch('/{order}/status',        [OrderController::class, 'updateStatus']);
+            Route::get('/',                 [OrderController::class, 'adminIndex']);
+            Route::get('/{order}',          [OrderController::class, 'show']);
+            Route::patch('/{order}/status', [OrderController::class, 'updateStatus']);
+        });
+
+        // ── Webhook management ──────────────────────── ← NEW
+        Route::prefix('webhooks')->group(function () {
+            Route::get('/',                  [WebhookController::class, 'index']);
+            Route::post('/',                 [WebhookController::class, 'store']);
+            Route::put('/{webhook}',         [WebhookController::class, 'update']);
+            Route::delete('/{webhook}',      [WebhookController::class, 'destroy']);
+            Route::post('/{webhook}/test',   [WebhookController::class, 'test']);
         });
     });
 });

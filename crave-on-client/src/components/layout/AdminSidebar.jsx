@@ -4,15 +4,17 @@ import { cn } from '@/lib/utils';
 import {
   LayoutDashboard, ShoppingBag,
   BarChart3, LogOut, Tag, Menu,
+  Coffee, Zap,
 } from 'lucide-react';
 import { useState } from 'react';
 
 const navItems = [
   { to: '/admin',            label: 'Dashboard',  icon: LayoutDashboard, exact: true },
-  { to: '/admin/products',   label: 'Products',   icon: ShoppingBag },
+  { to: '/admin/products',   label: 'Products',   icon: Coffee },
   { to: '/admin/categories', label: 'Categories', icon: Tag },
   { to: '/admin/orders',     label: 'Orders',     icon: ShoppingBag },
   { to: '/admin/analytics',  label: 'Analytics',  icon: BarChart3 },
+  { to: '/admin/webhooks',   label: 'Webhooks',   icon: Zap },  // ← added
 ];
 
 export function AdminSidebar() {
@@ -93,20 +95,24 @@ export function AdminSidebar() {
 
       {/* Footer */}
       <div className="p-3 border-t border-white/10">
-        <Link to="/"
+        <Link
+          to="/"
           title={collapsed ? 'View Store' : undefined}
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg
                      text-gray-300 hover:bg-white/10 hover:text-white
-                     transition-colors text-sm mb-1">
+                     transition-colors text-sm mb-1"
+        >
           <ShoppingBag className="w-4 h-4 flex-shrink-0" />
           {!collapsed && <span>View Store</span>}
         </Link>
 
-        <button onClick={handleLogout}
+        <button
+          onClick={handleLogout}
           title={collapsed ? 'Logout' : undefined}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
                      text-gray-300 hover:bg-red-500/20 hover:text-red-400
-                     transition-colors text-sm">
+                     transition-colors text-sm"
+        >
           <LogOut className="w-4 h-4 flex-shrink-0" />
           {!collapsed && <span>Logout</span>}
         </button>
