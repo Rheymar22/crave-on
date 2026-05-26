@@ -1,8 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { useEffect } from 'react';                    // ← add this
-import { useAuthStore } from '@/store/authStore';     // ← add this
+import { useEffect } from 'react';
+import { useAuthStore } from '@/store/authStore';
 import WebhooksPage from '@/pages/admin/WebhooksPage';
+import CraveOnChatAssistant from '@/components/CraveOnChatAssistant';
 
 import { CustomerLayout }  from '@/components/layout/CustomerLayout';
 import { AdminLayout }     from '@/components/layout/AdminLayout';
@@ -28,7 +29,6 @@ import AnalyticsPage   from '@/pages/admin/AnalyticsPage';
 export default function App() {
   const { token, fetchUser } = useAuthStore();
 
-  // On every page load, re-validate token with the API
   useEffect(() => {
     if (token) {
       fetchUser();
@@ -94,6 +94,8 @@ export default function App() {
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+
+      <CraveOnChatAssistant />
     </BrowserRouter>
   );
 }
