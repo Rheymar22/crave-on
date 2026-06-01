@@ -1,0 +1,26 @@
+name: crave_on_mobile
+description: Crave On Coffee Shop Mobile App
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+    
+  # HTTP client
+  http: ^1.2.0
+
+  # Use shared_preferences instead of flutter_secure_storage for web
+  shared_preferences: ^2.2.2
+
+  # State management
+  provider: ^6.1.2
+
+  # Cached images
+  cached_network_image: ^3.3.1
+
+  # Icons
+  cupertino_icons: ^1.0.6
